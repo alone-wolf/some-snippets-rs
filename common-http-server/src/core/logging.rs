@@ -6,11 +6,17 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::field::{Field, Visit};
+use tracing::{Event, Level, Subscriber, debug, error, info, warn};
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
+use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{EnvFilter, reload};
 
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -19,6 +25,20 @@ static JSON_LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = O
 static LOG_FILTER_RELOAD_HANDLE: OnceLock<reload::Handle<EnvFilter, tracing_subscriber::Registry>> =
     OnceLock::new();
 static LOG_FILTER_DIRECTIVE: OnceLock<Mutex<String>> = OnceLock::new();
+static TERMINAL_LOG_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
+type UiLogForwarder = Arc<dyn Fn(Level, String, String) + Send + Sync + 'static>;
+static UI_LOG_MODE_STATE: OnceLock<Mutex<UiLogModeState>> = OnceLock::new();
+
+#[derive(Default)]
+struct UiLogModeState {
+    next_id: u64,
+    forwarders: BTreeMap<u64, UiLogForwarder>,
+}
+
+#[derive(Debug)]
+pub(crate) struct UiLogModeGuard {
+    id: u64,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum LogFormat {
@@ -108,6 +128,91 @@ pub fn update_log_filter(directive: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn terminal_log_output_enabled() -> bool {
+    TERMINAL_LOG_OUTPUT_ENABLED.load(Ordering::Relaxed)
+}
+
+fn ui_log_mode_state() -> &'static Mutex<UiLogModeState> {
+    UI_LOG_MODE_STATE.get_or_init(|| Mutex::new(UiLogModeState::default()))
+}
+
+pub(crate) fn enter_ui_log_mode(forwarder: UiLogForwarder) -> UiLogModeGuard {
+    let state = ui_log_mode_state();
+    let mut guard = state.lock().expect("ui log mode lock poisoned");
+    let id = guard.next_id;
+    guard.next_id = guard.next_id.wrapping_add(1);
+    guard.forwarders.insert(id, forwarder);
+    TERMINAL_LOG_OUTPUT_ENABLED.store(false, Ordering::Relaxed);
+    UiLogModeGuard { id }
+}
+
+impl Drop for UiLogModeGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = ui_log_mode_state().lock() {
+            guard.forwarders.remove(&self.id);
+            if guard.forwarders.is_empty() {
+                TERMINAL_LOG_OUTPUT_ENABLED.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
+fn current_ui_log_forwarders() -> Vec<UiLogForwarder> {
+    ui_log_mode_state()
+        .lock()
+        .ok()
+        .map(|guard| guard.forwarders.values().cloned().collect())
+        .unwrap_or_default()
+}
+
+#[derive(Default)]
+struct UiLogLayer;
+
+impl<S> Layer<S> for UiLogLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let forwarders = current_ui_log_forwarders();
+        if forwarders.is_empty() {
+            return;
+        }
+
+        let mut visitor = UiMessageVisitor::default();
+        event.record(&mut visitor);
+        let metadata = event.metadata();
+        let message = visitor
+            .message
+            .unwrap_or_else(|| metadata.name().to_string());
+        for forwarder in forwarders {
+            forwarder(
+                *metadata.level(),
+                metadata.target().to_string(),
+                message.clone(),
+            );
+        }
+    }
+}
+
+#[derive(Default)]
+struct UiMessageVisitor {
+    message: Option<String>,
+}
+
+impl Visit for UiMessageVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = Some(value.to_string());
+        }
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = Some(format!("{value:?}"));
+        }
+    }
+}
+
 fn is_valid_request_id(raw: &str) -> bool {
     !raw.is_empty()
         && raw.len() <= MAX_REQUEST_ID_LEN
@@ -135,7 +240,16 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
     let initial_directive = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     set_current_log_filter(initial_directive);
 
+    let terminal_writer = BoxMakeWriter::new(|| -> Box<dyn std::io::Write + Send> {
+        if terminal_log_output_enabled() {
+            Box::new(std::io::stdout())
+        } else {
+            Box::new(std::io::sink())
+        }
+    });
+
     let terminal_layer = tracing_subscriber::fmt::layer()
+        .with_writer(terminal_writer)
         .with_target(config.include_target)
         .with_thread_ids(config.include_thread_ids)
         .with_file(config.include_source_location)
@@ -156,12 +270,14 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
 
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
+                    .with(UiLogLayer)
                     .with(terminal_layer.json())
                     .with(json_backend_layer)
                     .try_init()
             } else {
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
+                    .with(UiLogLayer)
                     .with(terminal_layer.json())
                     .try_init()
             }
@@ -180,12 +296,14 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
 
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
+                    .with(UiLogLayer)
                     .with(terminal_layer.pretty())
                     .with(json_backend_layer)
                     .try_init()
             } else {
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
+                    .with(UiLogLayer)
                     .with(terminal_layer.pretty())
                     .try_init()
             }
@@ -327,6 +445,7 @@ mod tests {
         routing::get,
     };
     use tower::ServiceExt;
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     async fn ok_handler() -> &'static str {
         "ok"
@@ -406,5 +525,55 @@ mod tests {
         assert_ne!(request_id, invalid);
         assert!(!request_id.is_empty());
         assert!(request_id.len() <= MAX_REQUEST_ID_LEN);
+    }
+
+    #[test]
+    fn ui_log_layer_forwards_message_to_registered_sink() {
+        let lock = TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("test lock");
+
+        let captured = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let captured_clone = captured.clone();
+        let guard = enter_ui_log_mode(Arc::new(move |level, target, message| {
+            if let Ok(mut guard) = captured_clone.lock() {
+                guard.push((level.to_string(), format!("{target}:{message}")));
+            }
+        }));
+
+        let subscriber = tracing_subscriber::registry().with(UiLogLayer);
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::warn!(target: "runtime_ui_test", "test ui log forwarding");
+        });
+
+        drop(guard);
+        drop(lock);
+
+        let entries = captured.lock().expect("captured lock");
+        assert!(entries.iter().any(|(level, entry)| level == "WARN"
+            && entry.contains("runtime_ui_test:test ui log forwarding")));
+    }
+
+    #[test]
+    fn ui_log_mode_guard_restores_terminal_output_after_last_guard_drops() {
+        let lock = TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("test lock");
+
+        let guard1 = enter_ui_log_mode(Arc::new(|_, _, _| {}));
+        assert!(!terminal_log_output_enabled());
+
+        let guard2 = enter_ui_log_mode(Arc::new(|_, _, _| {}));
+        assert!(!terminal_log_output_enabled());
+
+        drop(guard1);
+        assert!(!terminal_log_output_enabled());
+
+        drop(guard2);
+        assert!(terminal_log_output_enabled());
+
+        drop(lock);
     }
 }

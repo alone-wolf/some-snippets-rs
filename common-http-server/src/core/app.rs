@@ -17,7 +17,6 @@ pub struct AppBuilder {
     router: Router,
     app_config: AppConfig,
     startup_validations: Vec<StartupValidation>,
-    known_endpoints: Vec<String>,
 }
 
 impl AppBuilder {
@@ -30,25 +29,18 @@ impl AppBuilder {
                 .route("/api/v1/status", get(health_check)),
             app_config,
             startup_validations: Vec::new(),
-            known_endpoints: vec![
-                "/health".to_string(),
-                "/health/detailed".to_string(),
-                "/api/v1/status".to_string(),
-            ],
         }
     }
 
     /// 添加路由
     pub fn route(mut self, path: &str, method: axum::routing::MethodRouter) -> Self {
         self.router = self.router.route(path, method);
-        self.known_endpoints.push(path.to_string());
         self
     }
 
     /// 嵌套路由
     pub fn nest(mut self, path: &str, router: Router) -> Self {
         self.router = self.router.nest(path, router);
-        self.known_endpoints.push(format!("{}/*", path));
         self
     }
 
@@ -146,16 +138,11 @@ impl AppBuilder {
     /// Consume the builder and return:
     /// - the finalized router (with fallback route)
     /// - the app runtime configuration used by `Server`
-    pub(crate) fn into_parts(self) -> (Router, AppConfig, Vec<StartupValidation>, Vec<String>) {
-        let mut endpoints = self.known_endpoints;
-        endpoints.sort();
-        endpoints.dedup();
-
+    pub(crate) fn into_parts(self) -> (Router, AppConfig, Vec<StartupValidation>) {
         (
             self.router.with_state(()).fallback(fallback_handler),
             self.app_config,
             self.startup_validations,
-            endpoints,
         )
     }
 }
@@ -180,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_custom_routes_when_building() {
-        let (app, _, _, endpoints) = AppBuilder::new(AppConfig::default())
+        let (app, _, _) = AppBuilder::new(AppConfig::default())
             .route("/custom", get(custom_handler))
             .into_parts();
 
@@ -195,12 +182,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        assert!(endpoints.iter().any(|endpoint| endpoint == "/custom"));
     }
 
     #[test]
     fn keeps_startup_validations() {
-        let (_, _, startup_validations, _) = AppBuilder::new(AppConfig::default())
+        let (_, _, startup_validations) = AppBuilder::new(AppConfig::default())
             .startup_validation(|| Ok(()))
             .into_parts();
 

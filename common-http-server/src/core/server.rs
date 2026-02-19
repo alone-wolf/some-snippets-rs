@@ -3,7 +3,6 @@
 //! The startup flow is intentionally single-path:
 //! `AppBuilder -> Server::new(...) -> Server::start()`.
 
-use crate::core::console::{RuntimeConsoleConfig, spawn_runtime_console};
 use crate::core::{
     app::AppBuilder, cors::CorsConfig, logging::LoggingConfig, logging::init_logging,
     logging::structured_logging_middleware,
@@ -30,7 +29,6 @@ pub struct AppConfig {
     pub enable_logging: bool,
     pub cors_config: Option<CorsConfig>,
     pub logging_config: LoggingConfig,
-    pub runtime_console: Option<RuntimeConsoleConfig>,
 }
 
 impl ServerConfig {
@@ -123,12 +121,6 @@ impl AppConfig {
         self
     }
 
-    /// Enable interactive runtime console plugin.
-    pub fn with_runtime_console(mut self, config: RuntimeConsoleConfig) -> Self {
-        self.runtime_console = Some(config);
-        self
-    }
-
     /// 获取 CORS 配置
     pub fn get_cors_config(&self) -> Option<CorsConfig> {
         if self.enable_cors {
@@ -165,7 +157,6 @@ impl Default for AppConfig {
             enable_logging: true,
             cors_config: None,
             logging_config: LoggingConfig::default(),
-            runtime_console: None,
         }
     }
 }
@@ -212,7 +203,7 @@ impl Server {
 
     /// 启动服务器
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error>> {
-        let (app, app_config, startup_validations, known_endpoints) = self.app_builder.into_parts();
+        let (app, app_config, startup_validations) = self.app_builder.into_parts();
 
         // 初始化日志系统
         if app_config.enable_logging {
@@ -249,15 +240,6 @@ impl Server {
             addr
         );
         print_default_endpoints(addr);
-        if let Some(console_config) = &app_config.runtime_console {
-            spawn_runtime_console(
-                console_config,
-                addr,
-                known_endpoints.clone(),
-                &self.server_config,
-                &app_config,
-            );
-        }
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(

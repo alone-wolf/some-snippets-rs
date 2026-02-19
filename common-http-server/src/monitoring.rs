@@ -26,8 +26,10 @@ use tracing::{debug, error};
 
 const UNMATCHED_PATH_LABEL: &str = "__unmatched__";
 const MAX_EXTERNAL_SERVICE_CHECKS: usize = 8;
+#[cfg(feature = "external-health")]
 const EXTERNAL_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 const EXTERNAL_HEALTH_DNS_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(feature = "database-health")]
 const HEALTH_DB_QUERY_TIMEOUT: Duration = Duration::from_secs(3);
 const ALLOW_RUNTIME_HEALTH_TARGETS_ENV: &str = "COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS";
 
@@ -303,6 +305,22 @@ impl RequestStats {
         } else {
             0.0
         }
+    }
+
+    pub fn total_requests(&self) -> u64 {
+        self.total_requests
+    }
+
+    pub fn error_requests(&self) -> u64 {
+        self.error_requests
+    }
+
+    pub fn success_requests(&self) -> u64 {
+        self.total_requests.saturating_sub(self.error_requests)
+    }
+
+    pub fn uptime(&self) -> Duration {
+        self.start_time.elapsed()
     }
 }
 
