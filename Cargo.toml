@@ -1,16 +1,18 @@
 [package]
-name = "some-snippets1"
+name = "some-snippets"
 version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "migration","common-http-server", "common-http-server1"]
+members = [".", "migration"]
 
 [dependencies]
 tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
-#migration = { path = "migration" }
+migration = { path = "migration" }
 sea-orm = { version = "2.0.0-rc.32", features = [ "sqlx-sqlite", "runtime-tokio", "macros" ] }
 axum = "0.8.8"
 serde = { version = "1.0.228", features = ["derive"] }
-tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["cors", "trace"] }
+serde_json = "1.0.145"
+#tower = "0.5.3"
+#tower-http = { version = "0.6.8", features = ["cors", "trace"] }
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main" }
