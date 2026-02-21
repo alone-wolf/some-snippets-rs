@@ -1,103 +1,83 @@
-use axum::{
-    extract::Request as AxumRequest,
-    http::StatusCode,
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
+use crate::crud::single_table_crud_router;
+use crate::persistence::{
+    CollectionActiveModel, CollectionEntity, FileActiveModel, FileEntity, HistoryActiveModel,
+    HistoryEntity, NodeActiveModel, NodeEntity, SnippetActiveModel, SnippetEntity, TagActiveModel,
+    TagEntity, TextActiveModel, TextEntity,
 };
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
-use tower::ServiceBuilder;
-use tower_http::{
-    cors::{Any, CorsLayer},
-    trace::TraceLayer,
-};
+use axum::{Json, Router, routing::get};
+use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{Database, DatabaseConnection};
+use serde::Serialize;
+use std::sync::Arc;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct HealthResponse {
-    status: String,
-    message: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ApiResponse<T> {
+#[derive(Debug, Serialize)]
+struct PingResponse {
     success: bool,
-    data: Option<T>,
-    error: Option<String>,
+    message: &'static str,
 }
 
-async fn health_check() -> impl IntoResponse {
-    Json(HealthResponse {
-        status: "ok".to_string(),
-        message: "Service is running".to_string(),
+async fn ping() -> Json<PingResponse> {
+    Json(PingResponse {
+        success: true,
+        message: "pong",
     })
 }
 
-async fn logging_middleware(request: AxumRequest, next: Next) -> Response {
-    let method = request.method().clone();
-    let uri = request.uri().clone();
-    
-    let start = std::time::Instant::now();
-    let response = next.run(request).await;
-    let duration = start.elapsed();
-    
-    println!("{} {} {} {:?}", method, uri, response.status(), duration);
-    
-    response
+macro_rules! mount_crud_resources {
+    ($app_builder:expr, $db:expr, [$(($path:literal, $resource:literal, $entity:ty, $active_model:ty)),+ $(,)?]) => {{
+        let app_builder = $app_builder;
+        $(
+            let app_builder = app_builder.nest(
+                $path,
+                single_table_crud_router::<$entity, $active_model>($db.clone(), $resource),
+            );
+        )+
+        app_builder
+    }};
 }
 
-async fn not_found() -> impl IntoResponse {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            error: Some("Endpoint not found".to_string()),
-        }),
-    )
+fn build_server(db: Arc<DatabaseConnection>) -> Server {
+    let app_config = AppConfig::new()
+        .with_logging(true)
+        .with_tracing(true)
+        .with_cors(true);
+
+    let api_v1_router = mount_crud_resources!(
+        Router::new(),
+        db,
+        [
+            (
+                "/collections",
+                "collection",
+                CollectionEntity,
+                CollectionActiveModel
+            ),
+            ("/files", "file", FileEntity, FileActiveModel),
+            ("/histories", "history", HistoryEntity, HistoryActiveModel),
+            ("/nodes", "node", NodeEntity, NodeActiveModel),
+            ("/snippets", "snippet", SnippetEntity, SnippetActiveModel),
+            ("/tags", "tag", TagEntity, TagActiveModel),
+            ("/texts", "text", TextEntity, TextActiveModel),
+        ]
+    );
+    let app_builder = AppBuilder::new(app_config)
+        .route("/ping", get(ping))
+        .nest("/api/v1", api_v1_router);
+
+    let server_config = ServerConfig::new(3000).with_host("127.0.0.1");
+
+    Server::new(server_config, app_builder)
 }
 
-fn create_app() -> Router {
-    Router::new()
-        .route("/health", get(health_check))
-        .route("/api/v1/status", get(health_check))
-        .fallback(not_found)
-        .layer(
-            ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
-                .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
-                .layer(middleware::from_fn(logging_middleware)),
-        )
-}
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite://snippets.db?mode=rwc".to_string());
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = create_app();
-    
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("🚀 Server starting on http://{}", addr);
-    
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-    
-    Ok(())
-}
+    let migration_db = migration::sea_orm::Database::connect(&database_url).await?;
+    Migrator::up(&migration_db, None).await?;
 
-#[cfg(test)]
-mod tests {
-    use axum::{http::StatusCode, http::Request};
-    use tower::ServiceExt;
+    let db = Database::connect(&database_url).await?;
 
-    #[tokio::test]
-    async fn health_check_test() {
-        let app = super::create_app();
-        
-        let response = app
-            .oneshot(Request::builder().uri("/health").body(axum::body::Body::empty()).unwrap())
-            .await
-            .unwrap();
-        
-        assert_eq!(response.status(), StatusCode::OK);
-    }
+    build_server(Arc::new(db)).start().await
 }
