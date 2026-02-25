@@ -3,3 +3,4 @@ logs
 .git
 .idea
 .DS_Store
+.env
