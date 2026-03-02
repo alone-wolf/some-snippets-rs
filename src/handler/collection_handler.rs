@@ -1,4 +1,4 @@
-use crate::handler::success_response;
+use crate::handler::{ListQuery, success_response};
 use crate::service::collection_service::CollectionService;
 use crate::service::error::ServiceError;
 use axum::{
@@ -9,15 +9,8 @@ use axum::{
     routing::get,
 };
 use sea_orm::DatabaseConnection;
-use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
-
-#[derive(Debug, Deserialize)]
-struct ListQuery {
-    page: Option<u64>,
-    page_size: Option<u64>,
-}
 
 pub(crate) fn router(db: Arc<DatabaseConnection>) -> Router {
     let service = CollectionService::new(db);

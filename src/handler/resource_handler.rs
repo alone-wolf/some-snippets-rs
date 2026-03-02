@@ -2,7 +2,7 @@ use crate::entity::{
     FileActiveModel, FileEntity, HistoryActiveModel, HistoryEntity, NodeActiveModel, NodeEntity,
     SnippetActiveModel, SnippetEntity, TagActiveModel, TagEntity, TextActiveModel, TextEntity,
 };
-use crate::handler::success_response;
+use crate::handler::{ListQuery, success_response};
 use crate::service::error::ServiceError;
 use crate::service::resource_service::{ReferencePolicy, ResourceService, TimestampPolicy};
 use axum::{
@@ -16,15 +16,8 @@ use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
     Iterable, PrimaryKeyToColumn, PrimaryKeyTrait, TryIntoModel,
 };
-use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
-
-#[derive(Debug, Deserialize)]
-struct ListQuery {
-    page: Option<u64>,
-    page_size: Option<u64>,
-}
 
 macro_rules! mount_resources {
     ($router:expr, $db:expr, [$(($path:literal, $resource:literal, $entity:ty, $active_model:ty, $timestamp_policy:expr, $reference_policy:expr)),+ $(,)?]) => {{

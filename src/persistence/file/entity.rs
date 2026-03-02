@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = true)]
     pub id: i32,
+    pub file_uuid: Option<String>,
     pub storage_path: String,
     pub original_filename: String,
     pub mime_type: Option<String>,

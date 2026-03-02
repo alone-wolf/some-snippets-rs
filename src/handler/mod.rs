@@ -11,8 +11,14 @@ use axum::{
 };
 use common_http_server_rs::ApiResponse;
 use sea_orm::DatabaseConnection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ListQuery {
+    pub(super) page: Option<u64>,
+    pub(super) page_size: Option<u64>,
+}
 
 pub(crate) fn api_v1_router(db: Arc<DatabaseConnection>, file_storage_dir: Arc<PathBuf>) -> Router {
     Router::new()

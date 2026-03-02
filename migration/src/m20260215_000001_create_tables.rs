@@ -6,440 +6,534 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let mut tables = Vec::new();
+        manager
+            .create_table(
+                Table::create()
+                    .table(Collections::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Collections::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Collections::Label).string().not_null())
+                    .col(ColumnDef::new(Collections::Key).string().not_null())
+                    .col(ColumnDef::new(Collections::Description).string())
+                    .col(
+                        ColumnDef::new(Collections::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Collections::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Collections table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(Collection::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(Collection::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(Collection::Title).string().not_null())
-                        .col(ColumnDef::new(Collection::Description).string())
-                        .col(
-                            ColumnDef::new(Collection::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .col(
-                            ColumnDef::new(Collection::UpdatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_collection_title")
-                                .col(Collection::Title),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_collection_created_at")
-                                .col(Collection::CreatedAt),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Texts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Texts::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Texts::Content).string().not_null())
+                    .col(ColumnDef::new(Texts::Kind).string().not_null())
+                    .col(
+                        ColumnDef::new(Texts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Texts table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(Text::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(Text::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(Text::Content).string().not_null())
-                        .col(ColumnDef::new(Text::Kind).string().not_null())
-                        .col(
-                            ColumnDef::new(Text::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(Index::create().name("idx_text_kind").col(Text::Kind))
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Files::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Files::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Files::FileUuid).string())
+                    .col(ColumnDef::new(Files::StoragePath).string().not_null())
+                    .col(ColumnDef::new(Files::OriginalFilename).string().not_null())
+                    .col(ColumnDef::new(Files::MimeType).string())
+                    .col(ColumnDef::new(Files::ByteSize).integer())
+                    .col(ColumnDef::new(Files::Sha256).string())
+                    .col(
+                        ColumnDef::new(Files::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Files table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(File::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(File::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(File::StoragePath).string().not_null())
-                        .col(ColumnDef::new(File::OriginalFilename).string().not_null())
-                        .col(ColumnDef::new(File::MimeType).string())
-                        .col(ColumnDef::new(File::ByteSize).integer())
-                        .col(ColumnDef::new(File::Sha256).string())
-                        .col(
-                            ColumnDef::new(File::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(Index::create().name("idx_file_sha256").col(File::Sha256))
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Tags::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Tags::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Tags::Name).string().not_null())
+                    .col(
+                        ColumnDef::new(Tags::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Tags table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(Tag::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(Tag::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(Tag::Name).string().not_null())
-                        .col(
-                            ColumnDef::new(Tag::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Snippets::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Snippets::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Snippets::ConnectionId).integer().not_null())
+                    .col(ColumnDef::new(Snippets::Title).string().not_null())
+                    .col(ColumnDef::new(Snippets::Description).string())
+                    .col(ColumnDef::new(Snippets::CurrentHistoryId).integer())
+                    .col(
+                        ColumnDef::new(Snippets::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Snippets::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_snippets_connection_id")
+                            .from(Snippets::Table, Snippets::ConnectionId)
+                            .to(Collections::Table, Collections::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_snippets_current_history_id")
+                            .from(Snippets::Table, Snippets::CurrentHistoryId)
+                            .to(Histories::Table, Histories::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Snippets table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(Snippet::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(Snippet::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(Snippet::ConnectionId).integer().not_null())
-                        .col(ColumnDef::new(Snippet::Title).string().not_null())
-                        .col(ColumnDef::new(Snippet::Description).string())
-                        .col(ColumnDef::new(Snippet::CurrentHistoryId).integer())
-                        .col(
-                            ColumnDef::new(Snippet::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .col(
-                            ColumnDef::new(Snippet::UpdatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_snippet_connection_id")
-                                .col(Snippet::ConnectionId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_snippet_current_history_id")
-                                .col(Snippet::CurrentHistoryId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_snippet_updated_at")
-                                .col(Snippet::UpdatedAt),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_snippet_collection_id")
-                                .from(Snippet::Table, Snippet::ConnectionId)
-                                .to(Collection::Table, Collection::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Nodes::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Nodes::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Nodes::Kind).string().not_null())
+                    .col(ColumnDef::new(Nodes::SnippetId).integer().not_null())
+                    .col(ColumnDef::new(Nodes::TextId).integer())
+                    .col(ColumnDef::new(Nodes::FileId).integer())
+                    .col(ColumnDef::new(Nodes::MetaJson).string())
+                    .col(
+                        ColumnDef::new(Nodes::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_nodes_snippet_id")
+                            .from(Nodes::Table, Nodes::SnippetId)
+                            .to(Snippets::Table, Snippets::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_nodes_text_id")
+                            .from(Nodes::Table, Nodes::TextId)
+                            .to(Texts::Table, Texts::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_nodes_file_id")
+                            .from(Nodes::Table, Nodes::FileId)
+                            .to(Files::Table, Files::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Nodes table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(Node::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(Node::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(Node::Kind).string().not_null())
-                        .col(ColumnDef::new(Node::SnippetId).integer().not_null())
-                        .col(ColumnDef::new(Node::TextId).integer())
-                        .col(ColumnDef::new(Node::FileId).integer())
-                        .col(ColumnDef::new(Node::MetaJson).string())
-                        .col(
-                            ColumnDef::new(Node::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(Index::create().name("idx_node_kind").col(Node::Kind))
-                        .index(Index::create().name("idx_node_text_id").col(Node::TextId))
-                        .index(Index::create().name("idx_node_file_id").col(Node::FileId))
-                        .index(
-                            Index::create()
-                                .name("idx_node_snippet_id")
-                                .col(Node::SnippetId),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_node_text_id")
-                                .from(Node::Table, Node::TextId)
-                                .to(Text::Table, Text::Id)
-                                .on_delete(ForeignKeyAction::Restrict)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_node_file_id")
-                                .from(Node::Table, Node::FileId)
-                                .to(File::Table, File::Id)
-                                .on_delete(ForeignKeyAction::Restrict)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_node_snippet_id")
-                                .from(Node::Table, Node::SnippetId)
-                                .to(Snippet::Table, Snippet::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(Histories::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Histories::Id)
+                            .integer()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Histories::SnippetId).integer().not_null())
+                    .col(
+                        ColumnDef::new(Histories::VersionNumber)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Histories::Message).string())
+                    .col(
+                        ColumnDef::new(Histories::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Histories::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_histories_snippet_id")
+                            .from(Histories::Table, Histories::SnippetId)
+                            .to(Snippets::Table, Snippets::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Histories table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(History::Table)
-                        .if_not_exists()
-                        .col(
-                            ColumnDef::new(History::Id)
-                                .integer()
-                                .auto_increment()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(History::SnippetId).integer().not_null())
-                        .col(ColumnDef::new(History::VersionNumber).integer().not_null())
-                        .col(ColumnDef::new(History::Message).string())
-                        .col(
-                            ColumnDef::new(History::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .col(
-                            ColumnDef::new(History::UpdatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_history_snippet_id")
-                                .col(History::SnippetId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_history_created_at")
-                                .col(History::CreatedAt),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_history_snippet_id")
-                                .from(History::Table, History::SnippetId)
-                                .to(Snippet::Table, Snippet::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(HistoryNodes::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(HistoryNodes::HistoryId).integer().not_null())
+                    .col(ColumnDef::new(HistoryNodes::NodeId).integer().not_null())
+                    .col(
+                        ColumnDef::new(HistoryNodes::OrderIndex)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(HistoryNodes::AliasName).string())
+                    .col(
+                        ColumnDef::new(HistoryNodes::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .name("pk_history_nodes")
+                            .col(HistoryNodes::HistoryId)
+                            .col(HistoryNodes::NodeId),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_history_nodes_history_id")
+                            .from(HistoryNodes::Table, HistoryNodes::HistoryId)
+                            .to(Histories::Table, Histories::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_history_nodes_node_id")
+                            .from(HistoryNodes::Table, HistoryNodes::NodeId)
+                            .to(Nodes::Table, Nodes::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // History Nodes join table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(HistoryNode::Table)
-                        .if_not_exists()
-                        .col(ColumnDef::new(HistoryNode::HistoryId).integer().not_null())
-                        .col(ColumnDef::new(HistoryNode::NodeId).integer().not_null())
-                        .col(ColumnDef::new(HistoryNode::OrderIndex).integer().not_null())
-                        .col(ColumnDef::new(HistoryNode::AliasName).string())
-                        .col(
-                            ColumnDef::new(HistoryNode::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .primary_key(
-                            Index::create()
-                                .name("pk_history_node")
-                                .col(HistoryNode::HistoryId)
-                                .col(HistoryNode::NodeId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_history_node_node_id")
-                                .col(HistoryNode::NodeId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_history_node_history_id")
-                                .col(HistoryNode::HistoryId),
-                        )
-                        .index(
-                            Index::create()
-                                .name("idx_history_node_order")
-                                .col(HistoryNode::HistoryId)
-                                .col(HistoryNode::OrderIndex)
-                                .unique(),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_history_node_history_id")
-                                .from(HistoryNode::Table, HistoryNode::HistoryId)
-                                .to(History::Table, History::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_history_node_node_id")
-                                .from(HistoryNode::Table, HistoryNode::NodeId)
-                                .to(Node::Table, Node::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_table(
+                Table::create()
+                    .table(SnippetTags::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(SnippetTags::SnippetId).integer().not_null())
+                    .col(ColumnDef::new(SnippetTags::TagId).integer().not_null())
+                    .col(
+                        ColumnDef::new(SnippetTags::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .name("pk_snippet_tags")
+                            .col(SnippetTags::SnippetId)
+                            .col(SnippetTags::TagId),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_snippet_tags_snippet_id")
+                            .from(SnippetTags::Table, SnippetTags::SnippetId)
+                            .to(Snippets::Table, Snippets::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_snippet_tags_tag_id")
+                            .from(SnippetTags::Table, SnippetTags::TagId)
+                            .to(Tags::Table, Tags::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        // Snippet Tags join table
-        tables.push(
-            manager
-                .create_table(
-                    Table::create()
-                        .table(SnippetTag::Table)
-                        .if_not_exists()
-                        .col(ColumnDef::new(SnippetTag::SnippetId).integer().not_null())
-                        .col(ColumnDef::new(SnippetTag::TagId).integer().not_null())
-                        .col(
-                            ColumnDef::new(SnippetTag::CreatedAt)
-                                .timestamp_with_time_zone()
-                                .not_null(),
-                        )
-                        .primary_key(
-                            Index::create()
-                                .name("pk_snippet_tag")
-                                .col(SnippetTag::SnippetId)
-                                .col(SnippetTag::TagId),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_snippet_tag_snippet_id")
-                                .from(SnippetTag::Table, SnippetTag::SnippetId)
-                                .to(Snippet::Table, Snippet::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .foreign_key(
-                            ForeignKey::create()
-                                .name("fk_snippet_tag_tag_id")
-                                .from(SnippetTag::Table, SnippetTag::TagId)
-                                .to(Tag::Table, Tag::Id)
-                                .on_delete(ForeignKeyAction::Cascade)
-                                .on_update(ForeignKeyAction::Cascade),
-                        )
-                        .to_owned(),
-                )
-                .await?,
-        );
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_collections_label")
+                    .table(Collections::Table)
+                    .col(Collections::Label)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_collections_key")
+                    .table(Collections::Table)
+                    .col(Collections::Key)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_collections_created_at")
+                    .table(Collections::Table)
+                    .col(Collections::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_texts_kind")
+                    .table(Texts::Table)
+                    .col(Texts::Kind)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_files_file_uuid")
+                    .table(Files::Table)
+                    .col(Files::FileUuid)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_files_sha256")
+                    .table(Files::Table)
+                    .col(Files::Sha256)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_snippets_connection_id")
+                    .table(Snippets::Table)
+                    .col(Snippets::ConnectionId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_snippets_current_history_id")
+                    .table(Snippets::Table)
+                    .col(Snippets::CurrentHistoryId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_snippets_updated_at")
+                    .table(Snippets::Table)
+                    .col(Snippets::UpdatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_nodes_kind")
+                    .table(Nodes::Table)
+                    .col(Nodes::Kind)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_nodes_text_id")
+                    .table(Nodes::Table)
+                    .col(Nodes::TextId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_nodes_file_id")
+                    .table(Nodes::Table)
+                    .col(Nodes::FileId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_nodes_snippet_id")
+                    .table(Nodes::Table)
+                    .col(Nodes::SnippetId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_histories_snippet_id")
+                    .table(Histories::Table)
+                    .col(Histories::SnippetId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_histories_created_at")
+                    .table(Histories::Table)
+                    .col(Histories::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_history_nodes_node_id")
+                    .table(HistoryNodes::Table)
+                    .col(HistoryNodes::NodeId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_history_nodes_history_id")
+                    .table(HistoryNodes::Table)
+                    .col(HistoryNodes::HistoryId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_history_nodes_order")
+                    .table(HistoryNodes::Table)
+                    .col(HistoryNodes::HistoryId)
+                    .col(HistoryNodes::OrderIndex)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Drop tables in reverse order of creation
         manager
-            .drop_table(Table::drop().table(SnippetTag::Table).to_owned())
+            .drop_table(Table::drop().table(SnippetTags::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(HistoryNode::Table).to_owned())
+            .drop_table(Table::drop().table(HistoryNodes::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(History::Table).to_owned())
+            .drop_table(Table::drop().table(Histories::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Node::Table).to_owned())
+            .drop_table(Table::drop().table(Nodes::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Snippet::Table).to_owned())
+            .drop_table(Table::drop().table(Snippets::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Tag::Table).to_owned())
+            .drop_table(Table::drop().table(Tags::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(File::Table).to_owned())
+            .drop_table(Table::drop().table(Files::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Text::Table).to_owned())
+            .drop_table(Table::drop().table(Texts::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Collection::Table).to_owned())
+            .drop_table(Table::drop().table(Collections::Table).to_owned())
             .await?;
         Ok(())
     }
 }
 
 #[derive(DeriveIden)]
-enum Collection {
+enum Collections {
     Table,
     Id,
-    Title,
+    Label,
+    Key,
     Description,
     CreatedAt,
     UpdatedAt,
 }
 
 #[derive(DeriveIden)]
-enum Text {
+enum Texts {
     Table,
     Id,
     Content,
@@ -448,9 +542,10 @@ enum Text {
 }
 
 #[derive(DeriveIden)]
-enum File {
+enum Files {
     Table,
     Id,
+    FileUuid,
     StoragePath,
     OriginalFilename,
     MimeType,
@@ -460,7 +555,7 @@ enum File {
 }
 
 #[derive(DeriveIden)]
-enum Tag {
+enum Tags {
     Table,
     Id,
     Name,
@@ -468,7 +563,7 @@ enum Tag {
 }
 
 #[derive(DeriveIden)]
-enum Node {
+enum Nodes {
     Table,
     Id,
     Kind,
@@ -480,7 +575,7 @@ enum Node {
 }
 
 #[derive(DeriveIden)]
-enum Snippet {
+enum Snippets {
     Table,
     Id,
     ConnectionId,
@@ -492,7 +587,7 @@ enum Snippet {
 }
 
 #[derive(DeriveIden)]
-enum History {
+enum Histories {
     Table,
     Id,
     SnippetId,
@@ -503,7 +598,7 @@ enum History {
 }
 
 #[derive(DeriveIden)]
-enum HistoryNode {
+enum HistoryNodes {
     Table,
     HistoryId,
     NodeId,
@@ -513,7 +608,7 @@ enum HistoryNode {
 }
 
 #[derive(DeriveIden)]
-enum SnippetTag {
+enum SnippetTags {
     Table,
     SnippetId,
     TagId,

@@ -1,5 +1,6 @@
 use crate::entity::{CollectionEntity, FileEntity, HistoryEntity, SnippetEntity, TextEntity};
 use crate::repository::resource_repository::ResourceRepository;
+use crate::service::common::{merge_payload_with_existing, payload_as_object, resolve_pagination};
 use crate::service::error::{ServiceError, map_db_error};
 use chrono::Utc;
 use sea_orm::{
@@ -63,11 +64,7 @@ fn parse_i32_field(
     field_name: &'static str,
     required: bool,
 ) -> Result<Option<i32>, ServiceError> {
-    let Some(object) = payload.as_object() else {
-        return Err(ServiceError::bad_request(
-            "request payload must be a JSON object",
-        ));
-    };
+    let object = payload_as_object(payload)?;
 
     let value = object.get(field_name);
     if value.is_none() {
@@ -101,11 +98,7 @@ fn parse_optional_string_field(
     payload: &Value,
     field_name: &'static str,
 ) -> Result<Option<String>, ServiceError> {
-    let Some(object) = payload.as_object() else {
-        return Err(ServiceError::bad_request(
-            "request payload must be a JSON object",
-        ));
-    };
+    let object = payload_as_object(payload)?;
 
     match object.get(field_name) {
         None | Some(Value::Null) => Ok(None),
@@ -237,29 +230,6 @@ fn validate_node_kind(
     }
 }
 
-fn merge_payload_with_existing(
-    mut existing_payload: Value,
-    update_payload: &Value,
-) -> Result<Value, ServiceError> {
-    let Some(existing_object) = existing_payload.as_object_mut() else {
-        return Err(ServiceError::internal(
-            "failed to serialize existing record as JSON object",
-        ));
-    };
-
-    let Some(update_object) = update_payload.as_object() else {
-        return Err(ServiceError::bad_request(
-            "request payload must be a JSON object",
-        ));
-    };
-
-    for (key, value) in update_object {
-        existing_object.insert(key.clone(), value.clone());
-    }
-
-    Ok(existing_payload)
-}
-
 #[derive(Clone)]
 pub(crate) struct ResourceService<E, A> {
     db: Arc<DatabaseConnection>,
@@ -299,11 +269,7 @@ where
         page: Option<u64>,
         page_size: Option<u64>,
     ) -> Result<Value, ServiceError> {
-        let page_size = page_size.unwrap_or(20).clamp(1, 200);
-        let page = page.unwrap_or(1).max(1);
-        let offset = (page - 1).checked_mul(page_size).ok_or_else(|| {
-            ServiceError::bad_request("page and page_size combination is too large")
-        })?;
+        let (page, page_size, offset) = resolve_pagination(page, page_size)?;
 
         let records = ResourceRepository::list_records::<E, _>(self.db.as_ref(), page_size, offset)
             .await
@@ -365,7 +331,11 @@ where
         strip_id_key(&mut payload);
         apply_server_timestamps(&mut payload, self.timestamp_policy, true);
 
-        let merged_payload = merge_payload_with_existing(existing_payload, &payload)?;
+        let merged_payload = merge_payload_with_existing(
+            existing_payload,
+            &payload,
+            "failed to serialize existing record as JSON object",
+        )?;
         validate_references(&txn, &merged_payload, self.reference_policy).await?;
 
         ResourceRepository::update_from_json::<E, A, _>(&txn, existing, payload)

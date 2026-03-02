@@ -1,24 +1,17 @@
+use crate::entity::{CollectionActiveModel, CollectionEntity};
 use crate::repository::collection_repository::CollectionRepository;
+use crate::repository::resource_repository::ResourceRepository;
+use crate::service::common::{
+    merge_payload_with_existing, payload_as_object_mut, resolve_pagination,
+};
 use crate::service::error::{ServiceError, map_db_error};
 use chrono::Utc;
 use sea_orm::{DatabaseConnection, TransactionTrait};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::sync::Arc;
 
 fn collection_not_found(key: &str) -> ServiceError {
     ServiceError::not_found(format!("collection with key={key} was not found"))
-}
-
-fn payload_as_object_mut(payload: &mut Value) -> Result<&mut Map<String, Value>, ServiceError> {
-    payload
-        .as_object_mut()
-        .ok_or_else(|| ServiceError::bad_request("request payload must be a JSON object"))
-}
-
-fn payload_as_object(payload: &Value) -> Result<&Map<String, Value>, ServiceError> {
-    payload
-        .as_object()
-        .ok_or_else(|| ServiceError::bad_request("request payload must be a JSON object"))
 }
 
 fn sanitize_collection_payload(payload: &mut Value, is_update: bool) -> Result<(), ServiceError> {
@@ -69,7 +62,12 @@ fn sanitize_collection_payload(payload: &mut Value, is_update: bool) -> Result<(
 }
 
 fn validate_collection_payload(payload: &Value) -> Result<(), ServiceError> {
-    let object = payload_as_object(payload)?;
+    let Some(object) = payload.as_object() else {
+        return Err(ServiceError::bad_request(
+            "request payload must be a JSON object",
+        ));
+    };
+
     for required in ["label", "key"] {
         let Some(value) = object.get(required) else {
             return Err(ServiceError::bad_request(format!(
@@ -90,23 +88,6 @@ fn validate_collection_payload(payload: &Value) -> Result<(), ServiceError> {
     Ok(())
 }
 
-fn merge_payload_with_existing(
-    mut existing_payload: Value,
-    update_payload: &Value,
-) -> Result<Value, ServiceError> {
-    let existing_object = existing_payload.as_object_mut().ok_or_else(|| {
-        ServiceError::internal("failed to serialize existing collection as JSON object")
-    })?;
-    let update_object = update_payload
-        .as_object()
-        .ok_or_else(|| ServiceError::bad_request("request payload must be a JSON object"))?;
-
-    for (key, value) in update_object {
-        existing_object.insert(key.clone(), value.clone());
-    }
-    Ok(existing_payload)
-}
-
 #[derive(Clone)]
 pub(crate) struct CollectionService {
     db: Arc<DatabaseConnection>,
@@ -122,15 +103,15 @@ impl CollectionService {
         page: Option<u64>,
         page_size: Option<u64>,
     ) -> Result<Value, ServiceError> {
-        let page_size = page_size.unwrap_or(20).clamp(1, 200);
-        let page = page.unwrap_or(1).max(1);
-        let offset = (page - 1).checked_mul(page_size).ok_or_else(|| {
-            ServiceError::bad_request("page and page_size combination is too large")
-        })?;
+        let (page, page_size, offset) = resolve_pagination(page, page_size)?;
 
-        let records = CollectionRepository::list_records(self.db.as_ref(), page_size, offset)
-            .await
-            .map_err(map_db_error)?;
+        let records = ResourceRepository::list_records::<CollectionEntity, _>(
+            self.db.as_ref(),
+            page_size,
+            offset,
+        )
+        .await
+        .map_err(map_db_error)?;
 
         Ok(serde_json::json!({
             "items": records,
@@ -144,10 +125,14 @@ impl CollectionService {
         sanitize_collection_payload(&mut payload, false)?;
         validate_collection_payload(&payload)?;
 
-        let created = CollectionRepository::insert_and_reload(&txn, payload)
-            .await
-            .map_err(map_db_error)?
-            .ok_or_else(|| ServiceError::internal("failed to reload newly created collection"))?;
+        let created = ResourceRepository::insert_from_json_and_reload::<
+            CollectionEntity,
+            CollectionActiveModel,
+            _,
+        >(&txn, payload)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| ServiceError::internal("failed to reload newly created collection"))?;
 
         txn.commit().await.map_err(map_db_error)?;
         Ok(created)
@@ -179,12 +164,18 @@ impl CollectionService {
         let existing_payload = serde_json::to_value(&existing).map_err(|error| {
             ServiceError::internal(format!("failed to serialize existing collection: {error}"))
         })?;
-        let merged_payload = merge_payload_with_existing(existing_payload, &payload)?;
+        let merged_payload = merge_payload_with_existing(
+            existing_payload,
+            &payload,
+            "failed to serialize existing collection as JSON object",
+        )?;
         validate_collection_payload(&merged_payload)?;
 
-        CollectionRepository::update_from_json(&txn, existing, payload)
-            .await
-            .map_err(map_db_error)?;
+        ResourceRepository::update_from_json::<CollectionEntity, CollectionActiveModel, _>(
+            &txn, existing, payload,
+        )
+        .await
+        .map_err(map_db_error)?;
 
         let updated_key = merged_payload
             .get("key")
@@ -210,9 +201,10 @@ impl CollectionService {
             return Err(collection_not_found(key));
         };
 
-        let rows_affected = CollectionRepository::delete_by_id(&txn, existing.id)
-            .await
-            .map_err(map_db_error)?;
+        let rows_affected =
+            ResourceRepository::delete_by_id::<CollectionEntity, _>(&txn, existing.id)
+                .await
+                .map_err(map_db_error)?;
         if rows_affected == 0 {
             return Err(collection_not_found(key));
         }
