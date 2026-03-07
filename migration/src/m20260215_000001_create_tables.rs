@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DbBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -103,50 +104,56 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_table(
-                Table::create()
-                    .table(Snippets::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(Snippets::Id)
-                            .integer()
-                            .auto_increment()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(Snippets::ConnectionId).integer().not_null())
-                    .col(ColumnDef::new(Snippets::Title).string().not_null())
-                    .col(ColumnDef::new(Snippets::Description).string())
-                    .col(ColumnDef::new(Snippets::CurrentHistoryId).integer())
-                    .col(
-                        ColumnDef::new(Snippets::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Snippets::UpdatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_snippets_connection_id")
-                            .from(Snippets::Table, Snippets::ConnectionId)
-                            .to(Collections::Table, Collections::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Restrict),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_snippets_current_history_id")
-                            .from(Snippets::Table, Snippets::CurrentHistoryId)
-                            .to(Histories::Table, Histories::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Restrict),
-                    )
-                    .to_owned(),
+        let strict_fk_backend = matches!(
+            manager.get_database_backend(),
+            DbBackend::MySql | DbBackend::Postgres
+        );
+
+        let mut snippets_table = Table::create();
+        snippets_table
+            .table(Snippets::Table)
+            .if_not_exists()
+            .col(
+                ColumnDef::new(Snippets::Id)
+                    .integer()
+                    .auto_increment()
+                    .primary_key(),
             )
-            .await?;
+            .col(ColumnDef::new(Snippets::ConnectionId).integer().not_null())
+            .col(ColumnDef::new(Snippets::Title).string().not_null())
+            .col(ColumnDef::new(Snippets::Description).string())
+            .col(ColumnDef::new(Snippets::CurrentHistoryId).integer())
+            .col(
+                ColumnDef::new(Snippets::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(Snippets::UpdatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null(),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_snippets_connection_id")
+                    .from(Snippets::Table, Snippets::ConnectionId)
+                    .to(Collections::Table, Collections::Id)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .on_delete(ForeignKeyAction::Restrict),
+            );
+
+        if !strict_fk_backend {
+            snippets_table.foreign_key(
+                ForeignKey::create()
+                    .name("fk_snippets_current_history_id")
+                    .from(Snippets::Table, Snippets::CurrentHistoryId)
+                    .to(Histories::Table, Histories::Id)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .on_delete(ForeignKeyAction::Restrict),
+            );
+        }
+
+        manager.create_table(snippets_table.to_owned()).await?;
 
         manager
             .create_table(
@@ -236,6 +243,20 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        if strict_fk_backend {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_snippets_current_history_id")
+                        .from(Snippets::Table, Snippets::CurrentHistoryId)
+                        .to(Histories::Table, Histories::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(
