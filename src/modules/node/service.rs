@@ -290,6 +290,28 @@ impl NodeService {
         Ok(ordered)
     }
 
+    pub async fn list_all_with_files(&self) -> AppResult<Vec<NodeWithFile>> {
+        let nodes = self.node_repo.list_all().await?;
+        if nodes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let node_ids: Vec<_> = nodes.iter().map(|node| node.id).collect();
+        let metadata = self.file_service.repo().find_by_node_ids(&node_ids).await?;
+        let metadata_map: HashMap<i64, _> = metadata
+            .into_iter()
+            .map(|item| (item.node_id, item))
+            .collect();
+
+        Ok(nodes
+            .into_iter()
+            .map(|node| NodeWithFile {
+                file_metadata: metadata_map.get(&node.id).cloned(),
+                node,
+            })
+            .collect())
+    }
+
     pub async fn mark_committed(&self, node_ids: &[i64], actor: &str) -> AppResult<()> {
         self.node_repo
             .update_lifecycle(node_ids, NodeLifecycleState::Committed, actor)

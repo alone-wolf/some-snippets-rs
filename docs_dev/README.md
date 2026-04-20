@@ -27,6 +27,18 @@
 12. `T12` 权限校验与审计接入
 13. `T13` 集成测试与样例夹具
 
+## `web-admin` 前端实现主线
+
+建议在后端核心链路稳定后，按以下顺序推进：
+
+14. `T14` 初始化 `web-admin` 工程骨架
+15. `T15` `axum` 静态托管与开发代理支持
+16. `T16` `web-admin` App Shell、路由与 API 基础层
+17. `T17` Collection / Content 管理页面
+18. `T18` 内容编辑工作台
+19. `T19` 版本管理页面
+20. `T20` 前端测试、构建与交付约束
+
 ## 设计输入
 
 主要参考以下设计文档：
@@ -38,6 +50,7 @@
 - `docs_design/06-service-architecture-axum.md`
 - `docs_design/07-database-schema.md`
 - `docs_design/09-content-json-schema.md`
+- `docs_design/10-web-frontend-and-hosting.md`
 
 ## 建议代码布局
 
@@ -62,7 +75,11 @@ src/
     dto/
     handlers/
     middleware/
+web-admin/
+  src/
+  public/
   tests/
+tests/
 ```
 
 ## 输出要求

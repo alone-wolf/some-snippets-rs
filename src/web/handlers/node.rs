@@ -144,3 +144,18 @@ pub async fn get_lineage_version(
     let node = service.get_lineage_version(&uuid, version).await?;
     Ok(Json(ApiResponse::ok(NodeResponse::from(node))))
 }
+
+pub async fn list_nodes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<ApiResponse<Vec<NodeResponse>>>> {
+    let _user = require_permission(&state, &headers, Permission::ContentRead)?;
+    let service = NodeService::new(state.db.clone(), state.object_store.clone());
+    let items = service
+        .list_all_with_files()
+        .await?
+        .into_iter()
+        .map(NodeResponse::from)
+        .collect();
+    Ok(Json(ApiResponse::ok(items)))
+}

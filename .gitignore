@@ -5,5 +5,6 @@ logs
 .idea
 .DS_Store
 .env
-web/dist
-web/node_modules
+web-admin/dist
+web-admin/node_modules
+.onekey-run/

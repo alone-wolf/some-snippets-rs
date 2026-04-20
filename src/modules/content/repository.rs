@@ -28,6 +28,100 @@ impl ContentRepository {
             .ok_or_else(|| AppError::NotFound(format!("collection {collection_id}")))
     }
 
+    pub async fn list_collections(&self) -> AppResult<Vec<collections::Model>> {
+        collections::Entity::find()
+            .order_by_asc(collections::Column::Name)
+            .all(&self.db)
+            .await
+            .map_err(AppError::from)
+    }
+
+    pub async fn collection_slug_exists(&self, slug: &str) -> AppResult<bool> {
+        collections::Entity::find()
+            .filter(collections::Column::Slug.eq(slug))
+            .count(&self.db)
+            .await
+            .map(|count| count > 0)
+            .map_err(AppError::from)
+    }
+
+    pub async fn collection_slug_exists_except(
+        &self,
+        collection_id: i64,
+        slug: &str,
+    ) -> AppResult<bool> {
+        collections::Entity::find()
+            .filter(collections::Column::Slug.eq(slug))
+            .filter(collections::Column::Id.ne(collection_id))
+            .count(&self.db)
+            .await
+            .map(|count| count > 0)
+            .map_err(AppError::from)
+    }
+
+    pub async fn create_collection(
+        &self,
+        slug: String,
+        name: String,
+        description: Option<String>,
+        visibility: String,
+        actor: &str,
+    ) -> AppResult<collections::Model> {
+        let model = collections::ActiveModel {
+            slug: Set(slug),
+            name: Set(name),
+            description: Set(description),
+            visibility: Set(visibility),
+            owner_id: Set(actor.to_owned()),
+            config_json: Set(None),
+            ..Default::default()
+        };
+
+        model.insert(&self.db).await.map_err(AppError::from)
+    }
+
+    pub async fn update_collection(
+        &self,
+        collection: collections::Model,
+        slug: Option<String>,
+        name: Option<String>,
+        description: Option<Option<String>>,
+        visibility: Option<String>,
+    ) -> AppResult<collections::Model> {
+        let mut active: collections::ActiveModel = collection.into();
+        if let Some(value) = slug {
+            active.slug = Set(value);
+        }
+        if let Some(value) = name {
+            active.name = Set(value);
+        }
+        if let Some(value) = description {
+            active.description = Set(value);
+        }
+        if let Some(value) = visibility {
+            active.visibility = Set(value);
+        }
+        active.updated_at = Set(chrono::Utc::now());
+        active.update(&self.db).await.map_err(AppError::from)
+    }
+
+    pub async fn list_by_collection(&self, collection_id: i64) -> AppResult<Vec<contents::Model>> {
+        contents::Entity::find()
+            .filter(contents::Column::CollectionId.eq(collection_id))
+            .order_by_asc(contents::Column::Id)
+            .all(&self.db)
+            .await
+            .map_err(AppError::from)
+    }
+
+    pub async fn list_all_contents(&self) -> AppResult<Vec<contents::Model>> {
+        contents::Entity::find()
+            .order_by_desc(contents::Column::Id)
+            .all(&self.db)
+            .await
+            .map_err(AppError::from)
+    }
+
     pub async fn create(
         &self,
         collection_id: i64,

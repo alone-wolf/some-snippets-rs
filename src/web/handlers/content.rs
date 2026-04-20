@@ -9,17 +9,114 @@ use crate::{
     error::AppResult,
     modules::{
         auth::permission::Permission,
-        content::service::{ContentService, CreateContentInput, UpdateContentInput},
+        content::service::{
+            ContentService, CreateCollectionInput, CreateContentInput, UpdateCollectionInput,
+            UpdateContentInput,
+        },
     },
     web::{
         dto::content::{
-            ContentResponse, ContentVersionResponse, CreateContentRequest, CreateVersionRequest,
-            RollbackRequest, UpdateContentRequest, VersionSnapshotResponse,
+            CollectionResponse, ContentResponse, ContentVersionResponse, CreateCollectionRequest,
+            CreateContentRequest, CreateVersionRequest, ReorderDraftRequest, RollbackRequest,
+            UpdateCollectionRequest, UpdateContentRequest, VersionSnapshotResponse,
         },
         middleware::authz::require_permission,
         response::ApiResponse,
     },
 };
+
+pub async fn create_collection(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateCollectionRequest>,
+) -> AppResult<(StatusCode, Json<ApiResponse<CollectionResponse>>)> {
+    let user = require_permission(&state, &headers, Permission::ContentUpdate)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let collection = service
+        .create_collection(
+            CreateCollectionInput {
+                slug: payload.slug,
+                name: payload.name,
+                description: payload.description,
+                visibility: payload.visibility,
+            },
+            &user.user_id,
+        )
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::ok(CollectionResponse::from(collection))),
+    ))
+}
+
+pub async fn list_collections(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<ApiResponse<Vec<CollectionResponse>>>> {
+    let _user = require_permission(&state, &headers, Permission::ContentRead)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let collections = service
+        .list_collections()
+        .await?
+        .into_iter()
+        .map(CollectionResponse::from)
+        .collect();
+    Ok(Json(ApiResponse::ok(collections)))
+}
+
+pub async fn update_collection(
+    State(state): State<AppState>,
+    Path(collection_id): Path<i64>,
+    headers: HeaderMap,
+    Json(payload): Json<UpdateCollectionRequest>,
+) -> AppResult<Json<ApiResponse<CollectionResponse>>> {
+    let _user = require_permission(&state, &headers, Permission::ContentUpdate)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let collection = service
+        .update_collection(
+            collection_id,
+            UpdateCollectionInput {
+                slug: payload.slug,
+                name: payload.name,
+                description: payload.description,
+                visibility: payload.visibility,
+            },
+        )
+        .await?;
+    Ok(Json(ApiResponse::ok(CollectionResponse::from(collection))))
+}
+
+pub async fn list_contents(
+    State(state): State<AppState>,
+    Path(collection_id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<Json<ApiResponse<Vec<ContentResponse>>>> {
+    let _user = require_permission(&state, &headers, Permission::ContentRead)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let contents = service
+        .list_contents(collection_id)
+        .await?
+        .into_iter()
+        .map(ContentResponse::from)
+        .collect();
+    Ok(Json(ApiResponse::ok(contents)))
+}
+
+pub async fn list_all_contents(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<ApiResponse<Vec<ContentResponse>>>> {
+    let _user = require_permission(&state, &headers, Permission::ContentRead)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let contents = service
+        .list_all_contents()
+        .await?
+        .into_iter()
+        .map(ContentResponse::from)
+        .collect();
+    Ok(Json(ApiResponse::ok(contents)))
+}
 
 pub async fn create_content(
     State(state): State<AppState>,
@@ -129,6 +226,20 @@ pub async fn get_draft(
     let service = ContentService::new(state.db.clone(), state.object_store.clone());
     let draft = service.get_draft_snapshot(content_id).await?;
     Ok(Json(ApiResponse::ok(draft)))
+}
+
+pub async fn reorder_draft(
+    State(state): State<AppState>,
+    Path(content_id): Path<i64>,
+    headers: HeaderMap,
+    Json(payload): Json<ReorderDraftRequest>,
+) -> AppResult<Json<ApiResponse<ContentResponse>>> {
+    let user = require_permission(&state, &headers, Permission::ContentUpdate)?;
+    let service = ContentService::new(state.db.clone(), state.object_store.clone());
+    let content = service
+        .reorder_draft(content_id, payload.node_ids, &user.user_id)
+        .await?;
+    Ok(Json(ApiResponse::ok(ContentResponse::from(content))))
 }
 
 pub async fn get_latest(

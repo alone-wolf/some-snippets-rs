@@ -47,7 +47,10 @@ async fn ensure_database_parent_dir(database_url: &str) -> crate::error::AppResu
         return Ok(());
     };
 
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).await?;
     }
 

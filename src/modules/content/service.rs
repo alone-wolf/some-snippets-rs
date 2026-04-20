@@ -9,7 +9,7 @@ use crate::{
         node::{model::NodeWithFile, service::NodeService},
     },
     storage::{
-        db::entities::{content_versions, contents},
+        db::entities::{collections, content_versions, contents},
         object_store::ObjectStore,
         snapshot::{
             checksum::sha256_hex,
@@ -31,12 +31,28 @@ pub struct ContentService {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateCollectionInput {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateContentInput {
     pub collection_id: i64,
     pub slug: String,
     pub title: String,
     pub status: String,
     pub schema_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateCollectionInput {
+    pub slug: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +70,48 @@ impl ContentService {
             node_service: NodeService::new(db, Arc::clone(&object_store)),
             object_store,
         }
+    }
+
+    pub async fn create_collection(
+        &self,
+        input: CreateCollectionInput,
+        actor: &str,
+    ) -> AppResult<collections::Model> {
+        let slug = input.slug.trim();
+        let name = input.name.trim();
+        let visibility = input.visibility.trim();
+
+        if slug.is_empty() {
+            return Err(AppError::Validation(
+                "collection slug is required".to_owned(),
+            ));
+        }
+        if name.is_empty() {
+            return Err(AppError::Validation(
+                "collection name is required".to_owned(),
+            ));
+        }
+        if visibility.is_empty() {
+            return Err(AppError::Validation(
+                "collection visibility is required".to_owned(),
+            ));
+        }
+
+        if self.content_repo.collection_slug_exists(slug).await? {
+            return Err(AppError::Conflict(format!(
+                "collection slug already exists: {slug}"
+            )));
+        }
+
+        self.content_repo
+            .create_collection(
+                slug.to_owned(),
+                name.to_owned(),
+                input.description.map(|value| value.trim().to_owned()),
+                visibility.to_owned(),
+                actor,
+            )
+            .await
     }
 
     pub async fn create_content(
@@ -82,8 +140,98 @@ impl ContentService {
             .await
     }
 
+    pub async fn update_collection(
+        &self,
+        collection_id: i64,
+        input: UpdateCollectionInput,
+    ) -> AppResult<collections::Model> {
+        let collection = self
+            .content_repo
+            .ensure_collection_exists(collection_id)
+            .await?;
+
+        let slug = match input.slug {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(AppError::Validation(
+                        "collection slug is required".to_owned(),
+                    ));
+                }
+                if trimmed != collection.slug
+                    && self
+                        .content_repo
+                        .collection_slug_exists_except(collection_id, trimmed)
+                        .await?
+                {
+                    return Err(AppError::Conflict(format!(
+                        "collection slug already exists: {trimmed}"
+                    )));
+                }
+                Some(trimmed.to_owned())
+            }
+            None => None,
+        };
+
+        let name = match input.name {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(AppError::Validation(
+                        "collection name is required".to_owned(),
+                    ));
+                }
+                Some(trimmed.to_owned())
+            }
+            None => None,
+        };
+
+        let visibility = match input.visibility {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(AppError::Validation(
+                        "collection visibility is required".to_owned(),
+                    ));
+                }
+                Some(trimmed.to_owned())
+            }
+            None => None,
+        };
+
+        let description = input.description.map(|value| {
+            value.and_then(|item| {
+                let trimmed = item.trim().to_owned();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+        });
+
+        self.content_repo
+            .update_collection(collection, slug, name, description, visibility)
+            .await
+    }
+
     pub async fn get_content(&self, content_id: i64) -> AppResult<contents::Model> {
         self.content_repo.get(content_id).await
+    }
+
+    pub async fn list_collections(&self) -> AppResult<Vec<collections::Model>> {
+        self.content_repo.list_collections().await
+    }
+
+    pub async fn list_contents(&self, collection_id: i64) -> AppResult<Vec<contents::Model>> {
+        self.content_repo
+            .ensure_collection_exists(collection_id)
+            .await?;
+        self.content_repo.list_by_collection(collection_id).await
+    }
+
+    pub async fn list_all_contents(&self) -> AppResult<Vec<contents::Model>> {
+        self.content_repo.list_all_contents().await
     }
 
     pub async fn update_content(

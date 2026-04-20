@@ -1,4 +1,6 @@
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
 
 use crate::{
     error::{AppError, AppResult},
@@ -39,6 +41,14 @@ impl FileMetadataRepository {
     pub async fn find_by_node_ids(&self, node_ids: &[i64]) -> AppResult<Vec<file_metadata::Model>> {
         file_metadata::Entity::find()
             .filter(file_metadata::Column::NodeId.is_in(node_ids.iter().copied()))
+            .all(&self.db)
+            .await
+            .map_err(AppError::from)
+    }
+
+    pub async fn list_all(&self) -> AppResult<Vec<file_metadata::Model>> {
+        file_metadata::Entity::find()
+            .order_by_desc(file_metadata::Column::Id)
             .all(&self.db)
             .await
             .map_err(AppError::from)

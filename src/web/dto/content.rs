@@ -2,11 +2,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     storage::{
-        db::entities::{content_versions, contents},
+        db::entities::{collections, content_versions, contents},
         snapshot::{latest::LatestSnapshot, version::VersionSnapshot},
     },
     web::dto::draft::DraftSnapshot,
 };
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateCollectionRequest {
+    pub slug: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub visibility: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateCollectionRequest {
+    #[serde(default)]
+    pub slug: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<Option<String>>,
+    #[serde(default)]
+    pub visibility: Option<String>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateContentRequest {
@@ -36,6 +57,35 @@ pub struct CreateVersionRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct RollbackRequest {
     pub version: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReorderDraftRequest {
+    pub node_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionResponse {
+    pub id: i64,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: String,
+    pub owner_id: String,
+}
+
+impl From<collections::Model> for CollectionResponse {
+    fn from(value: collections::Model) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            name: value.name,
+            description: value.description,
+            visibility: value.visibility,
+            owner_id: value.owner_id,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -106,4 +156,10 @@ pub struct ContentSnapshotsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct VersionSnapshotResponse {
     pub snapshot: VersionSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentListResponse {
+    pub items: Vec<ContentResponse>,
 }

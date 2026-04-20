@@ -55,6 +55,14 @@ impl NodeRepository {
             .map_err(AppError::from)
     }
 
+    pub async fn list_all(&self) -> AppResult<Vec<nodes::Model>> {
+        nodes::Entity::find()
+            .order_by_desc(nodes::Column::Id)
+            .all(&self.db)
+            .await
+            .map_err(AppError::from)
+    }
+
     pub async fn create(&self, params: CreateNodeParams) -> AppResult<nodes::Model> {
         nodes::ActiveModel {
             content_id: Set(params.content_id),

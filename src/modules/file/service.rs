@@ -72,4 +72,10 @@ impl FileService {
     pub fn repo(&self) -> &FileMetadataRepository {
         &self.repo
     }
+
+    pub async fn list_all(
+        &self,
+    ) -> AppResult<Vec<crate::storage::db::entities::file_metadata::Model>> {
+        self.repo.list_all().await
+    }
 }
