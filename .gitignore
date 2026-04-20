@@ -8,3 +8,4 @@ logs
 web-admin/dist
 web-admin/node_modules
 .onekey-run/
+AGENTS.md
